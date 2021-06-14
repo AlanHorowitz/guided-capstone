@@ -53,7 +53,11 @@ def translate(s):
 
 
 def get_common_event(record: dict):
-    return [record.get(k, "XXX") for k in COMMON_COLUMNS]
+    """ Validated event.  NonNull fields must be populated; conversions to correct data formats must succeed"""
+    # for each field in
+    # get the type
+    # convert the string to type
+    return [record.get(k, "123") for k in COMMON_COLUMNS]
 
 
 def parse_csv(line: str):
@@ -131,12 +135,16 @@ if __name__ == '__main__':
             continue
         parsed = raw.map(lambda line: parser(line))
         data = spark.createDataFrame(parsed, schema=STRING_SCHEMA)
+        data2 = data.select('trade_dt').withColumn('trade_dt_casted', F.col('trade_dt').cast(T.DateType()))
+        data2.filter(F.col('trade_dt_casted').isNull()).show(60)
         data = cast_to_common_schema(data)
         all_data = all_data.union(data)
 
     empty_td = all_data.filter(F.col('trade_dt').isNull()).count()
     print("Empty Dates", empty_td)
     print(all_data.count())
-    all_data.select('trade_dt').orderBy('trade_dt').show(20)
+    all_data.select('trade_dt', 'arrival_tm').orderBy('trade_dt').show(62)
+    t1 = all_data.select('bid_pr').take(1)
+    print("t1 is", t1, t1[0], type(t1[0]['bid_pr']))
     # all_data.printSchema()
     # all_data.write.partitionBy('partition').mode('overwrite').parquet('output_dir')
