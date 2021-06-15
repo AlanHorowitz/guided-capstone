@@ -1,17 +1,16 @@
 #!/usr/bin/env python
-# coding: utf-8
 """
 Guided Capstone Step 2
 
-Read json and csv files from a directory, conform them to a common schema, and write the output to parquet,
-partitioned by event type.
+Use Apache Spark RDD and dataframe APIs to read trade and quote data from csv and json sources, conform them
+to a common schema and write the output to parquet.
 """
 
 from datetime import date, datetime
 from decimal import Decimal
 import json
 import os
-from typing import List, Union
+from typing import List, Dict, Union
 
 import dateutil.parser
 from pyspark.sql import SparkSession
@@ -47,53 +46,74 @@ INPUT_DIRECTORY = 'step2-input'
 
 
 def get_local_files() -> str:
-    """Yield a URL for each file in input directory"""
+    """Yield a URL for each file in the input directory"""
     for entry in os.listdir(INPUT_DIRECTORY):
         if os.path.isfile(os.path.join(INPUT_DIRECTORY, entry)):
             yield 'file://' + os.getcwd() + '/' + INPUT_DIRECTORY + '/' + entry
 
 
 def map_column(col: str) -> str:
-    """Map column name from csv and json to common schema name"""
+    """Map column names used by quote and trade schemas to common schema names"""
     return col if col not in COLUMN_MAPPINGS else COLUMN_MAPPINGS[col]
 
 
-def convert_value_to_common_type(value: Union[str, int, float], value_type: str) -> Union[str, int, Decimal, date, datetime]:
+def convert_value_to_common_type(value: Union[str, int, float], target_type: str) -> Union[str, int, Decimal, date, datetime]:
     """
-    Convert value to its required type. From csv, str is expected.  From json: string, int and float.
+    Convert a value to its required type. From csv, str is expected.  From json: str, int and float.
 
-    Conversion functions Raise ValueError on failure.
+    Args:
+       value: Value to be converted to the common type: string, int, and float are what the data currently present
+       target_type: target type as shown by dataFrame.printSchema() for COMMON_SCHEMA
+
+    Returns:
+       converted_value: value of target_type
+
+    Raises:
+       ValueError if any of the conversion functions fail.
     """
-    if value_type == 'date':
+    if target_type == 'date':
         converted_value = date.fromisoformat(value.strip())
-    elif value_type == 'timestamp':
-        converted_value = dateutil.parser.parse(value.strip())
-    elif value_type == 'integer':
+    elif target_type == 'timestamp':
+        converted_value = dateutil.parser.parse(value.strip())  # date.datetime.fromisoformat() too rigid
+    elif target_type == 'integer':
         if isinstance(value, int):  # json
             converted_value = int(value)
         else:
             converted_value = int(value.strip())
-    elif value_type.startswith('decimal'):
+    elif target_type.startswith('decimal'):
         if isinstance(value, float):  # json
             converted_value = Decimal.from_float(value)
         else:
             converted_value = Decimal(value.strip())
-    elif value_type == 'string':
+    elif target_type == 'string':
         converted_value = value.strip()
 
     return converted_value
 
 
-def common_event(record_dict: dict, struct_type: StructType, partition: str) -> List[Union[str, int, Decimal, date, datetime]]:
-    """ Validated event.  NonNull fields must be populated; conversions to correct data formats must succeed"""
-    # dictionary contains columns appearing in json or csv
+def common_event(record_dict: Dict[str, Union[str, int, float]], schema: StructType, partition: str) -> List[Union[str, int, Decimal, date, datetime]]:
+    """
+    Create a format-validated record matching the supplied schema.
+
+    Args:
+       record_dict: A dictionary of key/value pairs representing a quote or trade record
+       schema: the StructType of the target format
+       partition: A partition field to be added to the output record
+
+    Returns:
+       common_event_row: List representing record in in schema format.
+
+    Raises:
+       ValueError if any of conversion function fails or a non-nullable field is missing from the record.
+    """
+
     common_event_row = []
     try:
-        for struct_field in struct_type:
-            d = struct_field.jsonValue()
-            field_name = d['name']
-            field_type = d['type']
-            field_nullable = d['nullable']
+        # visit the target schema fields in order
+        for struct_field in schema:
+            field_name = struct_field.jsonValue()['name']
+            field_type = struct_field.jsonValue()['type']
+            field_nullable = struct_field.jsonValue()['nullable']
 
             if field_name == 'partition':
                 value = partition
@@ -111,14 +131,22 @@ def common_event(record_dict: dict, struct_type: StructType, partition: str) -> 
         raise ValueError(f'Value conversion error from record {record_dict}')
 
 
-def error_event(struct_type: StructType, partition: str, line: str) -> List[Union[str, int, Decimal, date, datetime]]:
-    """Return an error event containing default values and the input record to the specified partition"""
-    error_event_row = []
-    for struct_field in struct_type:
+def error_event(schema: StructType, partition: str, line: str) -> List[Union[str, int, Decimal, date, datetime]]:
+    """
+    Create a format-validated error record matching the supplied schema.
 
-        d = struct_field.jsonValue()
-        field_type = d['type']
-        field_name = d['name']
+    Args:
+       schema: the StructType of the target format
+       partition: A partition field to be added to the output record
+       line: The raw text of the record that wasn't successfully paresed
+
+    Returns:
+       error_event_row: List representing error record in schema format. Hardcoded error values are used for data fields.
+    """
+    error_event_row = []
+    for struct_field in schema:
+        field_name = struct_field.jsonValue()['name']
+        field_type = struct_field.jsonValue()['type']
 
         if field_name == 'partition':
             value = partition
