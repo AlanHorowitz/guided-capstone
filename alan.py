@@ -5,33 +5,19 @@ from pyspark.sql import SparkSession
 from pyspark.sql.types import StructType, StructField
 import pyspark.sql.types as T
 import pyspark.sql.functions as F
+from datetime import date, datetime
+from decimal import Decimal
 import json
+import dateutil.parser
+
 
 QUOTE_COLUMNS = ('trade_dt', 'file_tm', 'event_type', 'symbol', 'event_tm', 'event_seq_nb',
                  'exchange', 'bid_pr', 'bid_size', 'ask_pr', 'ask_size')
 
 TRADE_COLUMNS = ('trade_dt', 'file_tm', 'event_type', 'symbol', 'event_tm', 'event_seq_nb',
-                 'exchange', 'price', 'size', 'execution_id')
+                 'exchange', 'price', 'size')
 
-COMMON_COLUMNS = ('trade_dt', 'rec_type', 'symbol', 'exchange', 'event_tm', 'event_seq_nb', 'arrival_tm',
-                  'trade_pr', 'bid_pr', 'bid_size', 'ask_pr', 'ask_size', 'partition')
-
-STRING_SCHEMA = StructType([StructField("trade_dt", T.StringType(), True),
-                            StructField("rec_type", T.StringType(), False),
-                            StructField("symbol", T.StringType(), False),
-                            StructField("exchange", T.StringType(), False),
-                            StructField("event_tm", T.StringType(), False),
-                            StructField("event_seq_nb", T.StringType(), False),
-                            StructField("arrival_tm", T.StringType(), False),
-                            StructField("trade_pr", T.StringType(), True),
-                            StructField("bid_pr", T.StringType(), True),
-                            StructField("bid_size", T.StringType(), True),
-                            StructField("ask_pr", T.StringType(), True),
-                            StructField("ask_size", T.StringType(), True),
-                            StructField("partition", T.StringType(), False)]
-                           )
-
-COMMON_SCHEMA = StructType([StructField("trade_dt", T.DateType(), True),
+COMMON_SCHEMA = StructType([StructField("trade_dt", T.DateType(), False),
                             StructField("rec_type", T.StringType(), False),
                             StructField("symbol", T.StringType(), False),
                             StructField("exchange", T.StringType(), False),
@@ -52,50 +38,113 @@ def translate(s):
     return s if s not in translations else translations[s]
 
 
-def get_common_event(record: dict):
+def get_error_event(struct_type: StructType):
+    error_event_row = []
+    for struct_field in struct_type:
+
+        d = struct_field.jsonValue()
+        field_type = d['type']
+        field_name = d['name']
+        if field_name == 'partition':
+            converted_field = 'B'
+        elif field_type == 'date':
+            converted_field = date(2000, 1, 1)
+        elif field_type == 'timestamp':
+            converted_field = datetime(2000, 1, 1, 0, 0, 0, 0)
+        elif field_type == 'integer':
+            converted_field = -1
+        elif field_type.startswith('decimal'):
+            converted_field = Decimal(-1.0)
+        elif field_type == 'string':
+            converted_field = 'INVALID'
+        error_event_row.append(converted_field)
+    if len(error_event_row) != 13:
+        print("error event row", error_event_row)
+        raise ValueError
+    return error_event_row
+
+
+def set_value_from_record(record, field_type):
+    if field_type == 'date':
+        converted_field = date.fromisoformat(record.strip())
+
+    elif field_type == 'timestamp':
+        converted_field = dateutil.parser.parse(record.strip())
+
+    elif field_type == 'integer':
+        if isinstance(record, str):
+            converted_field = int(record.strip())
+        else:
+            converted_field = record
+
+    elif field_type.startswith('decimal'):
+        if isinstance(record, str):
+            converted_field = Decimal(record.strip())
+        else:
+            converted_field = Decimal.from_float(record)
+
+    elif field_type == 'string':
+        converted_field = record.strip()
+    return converted_field
+
+
+def get_common_event(record: dict, struct_type: StructType):
     """ Validated event.  NonNull fields must be populated; conversions to correct data formats must succeed"""
-    # for each field in
-    # get the type
-    # convert the string to type
-    return [record.get(k, "123") for k in COMMON_COLUMNS]
+    
+    common_event_row = []
+    try:
+        for struct_field in struct_type:
+
+            d = struct_field.jsonValue()
+            field_name = d['name']
+            field_type = d['type']
+            field_nullable = d['nullable']
+
+            if field_name in record:
+                converted_field = set_value_from_record(record[field_name], field_type)
+            elif field_nullable:
+                converted_field = None
+            else:
+                raise ValueError(f'NonNullable field missing from record {record}')
+
+            common_event_row.append(converted_field)
+    except:
+        print(common_event_row)
+        raise RuntimeError
+
+    return common_event_row
 
 
 def parse_csv(line: str):
-    record_type_pos = 2
-    record = line.split(',')
-    record_type = record[record_type_pos]
+    try:
+        record_type_pos = 2
+        record = line.split(',')
+        record_type = record[record_type_pos]
 
-    if record_type == 'Q' and len(record) == len(QUOTE_COLUMNS):
-        translated_record = {translate(c): record[i] for i, c in enumerate(QUOTE_COLUMNS)}
-        translated_record['partition'] = record_type
-        return get_common_event(translated_record)
-    elif record_type == 'T' and len(record) == len(TRADE_COLUMNS):
-        translated_record = {translate(c): record[i] for i, c in enumerate(TRADE_COLUMNS)}
-        translated_record['partition'] = record_type
-        return get_common_event(translated_record)
-    else:
-        translated_record = dict()
-        translated_record['partition'] = 'B'
-        translated_record['line'] = line
-        return get_common_event(translated_record)
+        if record_type == 'Q' and len(record) == len(QUOTE_COLUMNS):
+            translated_record = {translate(c): record[i] for i, c in enumerate(QUOTE_COLUMNS)}
+            translated_record['partition'] = record_type
+            return get_common_event(translated_record, COMMON_SCHEMA)
+        elif record_type == 'T' and len(record) == len(TRADE_COLUMNS):
+            translated_record = {translate(c): record[i] for i, c in enumerate(TRADE_COLUMNS)}
+            translated_record['partition'] = record_type
+            return get_common_event(translated_record, COMMON_SCHEMA)
+        else:
+            return get_error_event(COMMON_SCHEMA)
+    except ValueError:
+        return get_error_event(COMMON_SCHEMA)
 
 
 def parse_json(line: str):
     record = json.loads(line)
     record_type = record['event_type']
-    record_keys = set(record.keys())
-    is_valid_record = (record_type == 'Q' and record_keys == set(QUOTE_COLUMNS)) or (
-                       record_type == 'T' and record_keys == set(TRADE_COLUMNS))
 
-    if is_valid_record:
+    if record_type == 'Q' or record_type == 'T':
         translated_record = {translate(k): v for k, v in record.items()}
         translated_record['partition'] = record_type
-        return get_common_event(translated_record)
+        return get_common_event(translated_record, COMMON_SCHEMA)
     else:
-        translated_record = dict()
-        translated_record['partition'] = 'B'
-        translated_record['line'] = line
-        return get_common_event(translated_record)
+        return get_error_event(COMMON_SCHEMA)
 
 
 def get_local_files():
@@ -104,19 +153,6 @@ def get_local_files():
                    "file:///home/alan/guided-capstone/part-00000-5e4ced0a-66e2-442a-b020-347d0df4df8f-c000.csv",
                    "file:///home/alan/guided-capstone/part-00000-214fff0a-f408-466c-bb15-095cd8b648dc-c000.csv"]
     return local_files
-
-
-def cast_to_common_schema(df):
-    df = df.withColumn('trade_dt', F.col('trade_dt').cast(T.DateType()))
-    df = df.withColumn('event_tm', F.col('event_tm').cast(T.TimestampType()))
-    df = df.withColumn('arrival_tm', F.col('arrival_tm').cast(T.TimestampType()))
-    df = df.withColumn('event_seq_nb', F.col('event_seq_nb').cast(T.IntegerType()))
-    df = df.withColumn('bid_size', F.col('bid_size').cast(T.IntegerType()))
-    df = df.withColumn('ask_size', F.col('ask_size').cast(T.IntegerType()))
-    df = df.withColumn('trade_pr', F.col('trade_pr').cast(T.DecimalType(10, 2)))
-    df = df.withColumn('bid_pr', F.col('bid_pr').cast(T.DecimalType(10, 2)))
-    df = df.withColumn('ask_pr', F.col('ask_pr').cast(T.DecimalType(10, 2)))
-    return df
 
 
 if __name__ == '__main__':
@@ -133,18 +169,9 @@ if __name__ == '__main__':
         else:
             print("unsupported file type")
             continue
-        parsed = raw.map(lambda line: parser(line))
-        data = spark.createDataFrame(parsed, schema=STRING_SCHEMA)
-        data2 = data.select('trade_dt').withColumn('trade_dt_casted', F.col('trade_dt').cast(T.DateType()))
-        data2.filter(F.col('trade_dt_casted').isNull()).show(60)
-        data = cast_to_common_schema(data)
+        parsed = raw.map(parser)
+        data = spark.createDataFrame(parsed, schema=COMMON_SCHEMA)
         all_data = all_data.union(data)
 
-    empty_td = all_data.filter(F.col('trade_dt').isNull()).count()
-    print("Empty Dates", empty_td)
-    print(all_data.count())
-    all_data.select('trade_dt', 'arrival_tm').orderBy('trade_dt').show(62)
-    t1 = all_data.select('bid_pr').take(1)
-    print("t1 is", t1, t1[0], type(t1[0]['bid_pr']))
-    # all_data.printSchema()
-    # all_data.write.partitionBy('partition').mode('overwrite').parquet('output_dir')
+    all_data.printSchema()
+    all_data.write.partitionBy('partition').mode('overwrite').parquet('output_dir')
