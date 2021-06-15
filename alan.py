@@ -1,13 +1,22 @@
 #!/usr/bin/env python
 # coding: utf-8
+"""
+Guided Capstone Step 2
 
-from pyspark.sql import SparkSession
-from pyspark.sql.types import StructType, StructField
-import pyspark.sql.types as T
+Read json and csv files from a directory, conform them to a common schema, and write the output to parquet,
+partitioned by event type.
+"""
+
 from datetime import date, datetime
 from decimal import Decimal
 import json
+import os
+from typing import List, Union
+
 import dateutil.parser
+from pyspark.sql import SparkSession
+from pyspark.sql.types import StructType, StructField
+import pyspark.sql.types as T
 
 
 QUOTE_COLUMNS = ('trade_dt', 'file_tm', 'event_type', 'symbol', 'event_tm', 'event_seq_nb',
@@ -34,20 +43,76 @@ COMMON_SCHEMA = StructType([StructField("trade_dt", T.DateType(), False),
                             StructField("line", T.StringType(), True)]
                            )
 
-
-def get_local_files():
-    local_files = ["file:///home/alan/guided-capstone/part-00000-092ec1db-39ab-4079-9580-f7c7b516a283-c000.json",
-                   "file:///home/alan/guided-capstone/part-00000-c6c48831-3d45-4887-ba5f-82060885fc6c-c000.json",
-                   "file:///home/alan/guided-capstone/part-00000-5e4ced0a-66e2-442a-b020-347d0df4df8f-c000.csv",
-                   "file:///home/alan/guided-capstone/part-00000-214fff0a-f408-466c-bb15-095cd8b648dc-c000.csv"]
-    return local_files
+INPUT_DIRECTORY = 'step2-input'
 
 
-def map_column(col):
+def get_local_files() -> str:
+    """Yield a URL for each file in input directory"""
+    for entry in os.listdir(INPUT_DIRECTORY):
+        if os.path.isfile(os.path.join(INPUT_DIRECTORY, entry)):
+            yield 'file://' + os.getcwd() + '/' + INPUT_DIRECTORY + '/' + entry
+
+
+def map_column(col: str) -> str:
+    """Map column name from csv and json to common schema name"""
     return col if col not in COLUMN_MAPPINGS else COLUMN_MAPPINGS[col]
 
 
-def get_error_event(struct_type: StructType, partition: str, line: str):
+def convert_value_to_common_type(value: Union[str, int, float], value_type: str) -> Union[str, int, Decimal, date, datetime]:
+    """
+    Convert value to its required type. From csv, str is expected.  From json: string, int and float.
+
+    Conversion functions Raise ValueError on failure.
+    """
+    if value_type == 'date':
+        converted_value = date.fromisoformat(value.strip())
+    elif value_type == 'timestamp':
+        converted_value = dateutil.parser.parse(value.strip())
+    elif value_type == 'integer':
+        if isinstance(value, int):  # json
+            converted_value = int(value)
+        else:
+            converted_value = int(value.strip())
+    elif value_type.startswith('decimal'):
+        if isinstance(value, float):  # json
+            converted_value = Decimal.from_float(value)
+        else:
+            converted_value = Decimal(value.strip())
+    elif value_type == 'string':
+        converted_value = value.strip()
+
+    return converted_value
+
+
+def common_event(record_dict: dict, struct_type: StructType, partition: str) -> List[Union[str, int, Decimal, date, datetime]]:
+    """ Validated event.  NonNull fields must be populated; conversions to correct data formats must succeed"""
+    # dictionary contains columns appearing in json or csv
+    common_event_row = []
+    try:
+        for struct_field in struct_type:
+            d = struct_field.jsonValue()
+            field_name = d['name']
+            field_type = d['type']
+            field_nullable = d['nullable']
+
+            if field_name == 'partition':
+                value = partition
+            elif field_name in record_dict:
+                value = convert_value_to_common_type(record_dict[field_name], field_type)
+            elif field_nullable:
+                value = None
+            else:
+                raise ValueError(f'NonNullable field missing from record {record_dict}')
+            common_event_row.append(value)
+
+        return common_event_row
+
+    except Exception:
+        raise ValueError(f'Value conversion error from record {record_dict}')
+
+
+def error_event(struct_type: StructType, partition: str, line: str) -> List[Union[str, int, Decimal, date, datetime]]:
+    """Return an error event containing default values and the input record to the specified partition"""
     error_event_row = []
     for struct_field in struct_type:
 
@@ -75,58 +140,7 @@ def get_error_event(struct_type: StructType, partition: str, line: str):
     return error_event_row
 
 
-def get_typed_value(value, value_type):
-    """Convert value to its required type. From csv string is expected.  From json: string, int and float."""
-    """Conversion functions Raise ValueError on failure."""
-
-    if value_type == 'date':
-        converted_value = date.fromisoformat(value.strip())
-    elif value_type == 'timestamp':
-        converted_value = dateutil.parser.parse(value.strip())
-    elif value_type == 'integer':
-        if isinstance(value, int):  # json
-            converted_value = int(value)
-        else:
-            converted_value = int(value.strip())
-    elif value_type.startswith('decimal'):
-        if isinstance(value, float):  # json
-            converted_value = Decimal.from_float(value)
-        else:
-            converted_value = Decimal(value.strip())
-    elif value_type == 'string':
-        converted_value = value.strip()
-
-    return converted_value
-
-
-def get_common_event(record_dict: dict, struct_type: StructType, partition: str):
-    """ Validated event.  NonNull fields must be populated; conversions to correct data formats must succeed"""
-    # dictionary contains columns appearing in json or csv
-    common_event_row = []
-    try:
-        for struct_field in struct_type:
-            d = struct_field.jsonValue()
-            field_name = d['name']
-            field_type = d['type']
-            field_nullable = d['nullable']
-
-            if field_name == 'partition':
-                value = partition
-            elif field_name in record_dict:
-                value = get_typed_value(record_dict[field_name], field_type)
-            elif field_nullable:
-                value = None
-            else:
-                raise ValueError(f'NonNullable field missing from record {record_dict}')
-            common_event_row.append(value)
-
-        return common_event_row
-
-    except Exception:
-        raise ValueError(f'Value conversion error from record {record_dict}')
-
-
-def parse_csv(line: str):
+def parse_csv(line: str) -> List[Union[str, int, Decimal, date, datetime]]:
     try:
         record_type_pos = 2
         record = line.split(',')
@@ -134,34 +148,33 @@ def parse_csv(line: str):
 
         if record_type == 'Q' and len(record) == len(QUOTE_COLUMNS):
             record_dict = {map_column(c): record[i] for i, c in enumerate(QUOTE_COLUMNS)}
-            return get_common_event(record_dict, COMMON_SCHEMA, 'Q')
+            return common_event(record_dict, COMMON_SCHEMA, 'Q')
         elif record_type == 'T' and len(record) == len(TRADE_COLUMNS):
             record_dict = {map_column(c): record[i] for i, c in enumerate(TRADE_COLUMNS)}
-            return get_common_event(record_dict, COMMON_SCHEMA, 'T')
+            return common_event(record_dict, COMMON_SCHEMA, 'T')
         else:
             raise ValueError(f'Unknown record type or incorrect number of fields from record {record}')
 
     except ValueError:
-        return get_error_event(COMMON_SCHEMA, 'B', line)
+        return error_event(COMMON_SCHEMA, 'B', line)
 
 
-def parse_json(line: str):
+def parse_json(line: str) -> List[Union[str, int, Decimal, date, datetime]]:
     try:
         record = json.loads(line)
         record_type = record['event_type']
 
         if record_type == 'Q' or record_type == 'T':
             translated_record = {map_column(k): v for k, v in record.items()}
-            return get_common_event(translated_record, COMMON_SCHEMA, record_type)
+            return common_event(translated_record, COMMON_SCHEMA, record_type)
         else:
             raise ValueError(f'Unknown record type from record {record}')
 
     except ValueError:
-        return get_error_event(COMMON_SCHEMA, 'B', line)
+        return error_event(COMMON_SCHEMA, 'B', line)
 
 
 if __name__ == '__main__':
-
     spark = SparkSession.builder.master('local').appName('app').getOrCreate()
     sc = spark.sparkContext
     all_data = spark.createDataFrame([], COMMON_SCHEMA)  # empty dataframe to accumulate all files
@@ -180,5 +193,6 @@ if __name__ == '__main__':
         all_data = all_data.union(data)
 
     all_data.printSchema()
+    all_data.show(50, truncate=False)
     print("Combined record count", all_data.count())
     all_data.write.partitionBy('partition').mode('overwrite').parquet('output_dir')
