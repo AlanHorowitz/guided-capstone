@@ -3,7 +3,7 @@
 Guided Capstone Step 2
 
 Use Apache Spark RDD and dataframe APIs to read trade and quote data from csv and json sources, conform them
-to a common schema and write the output to parquet.
+to a common schema, and write the output to parquet.
 """
 
 from datetime import date, datetime
@@ -138,7 +138,7 @@ def error_event(schema: StructType, partition: str, line: str) -> List[Union[str
     Args:
        schema: the StructType of the target format
        partition: A partition field to be added to the output record
-       line: The raw text of the record that wasn't successfully paresed
+       line: The raw text of the record that wasn't successfully parsed
 
     Returns:
        error_event_row: List representing error record in schema format. Hardcoded error values are used for data fields.
@@ -169,6 +169,12 @@ def error_event(schema: StructType, partition: str, line: str) -> List[Union[str
 
 
 def parse_csv(line: str) -> List[Union[str, int, Decimal, date, datetime]]:
+    """
+    Parse a line of text in csv format, setting partition column as record type.
+
+    :param line: A line of comma delimited text
+    :return: Record in format of COMMON_SCHEMA. May be successfully parsed data or Error record.
+    """
     try:
         record_type_pos = 2
         record = line.split(',')
@@ -188,6 +194,12 @@ def parse_csv(line: str) -> List[Union[str, int, Decimal, date, datetime]]:
 
 
 def parse_json(line: str) -> List[Union[str, int, Decimal, date, datetime]]:
+    """
+    Parse a line of text in json format, setting partition column as record type.
+
+    :param line: A line of one json record
+    :return: Record in format of COMMON_SCHEMA. May be successfully parsed data or Error record.
+    """
     try:
         record = json.loads(line)
         record_type = record['event_type']
@@ -203,6 +215,10 @@ def parse_json(line: str) -> List[Union[str, int, Decimal, date, datetime]]:
 
 
 if __name__ == '__main__':
+    """
+    Guided Capstone data ingestion.  Read json and csv input files, transform data into a common schema
+    and persist in parquet format. 
+    """
     spark = SparkSession.builder.master('local').appName('app').getOrCreate()
     sc = spark.sparkContext
     all_data = spark.createDataFrame([], COMMON_SCHEMA)  # empty dataframe to accumulate all files
@@ -221,6 +237,6 @@ if __name__ == '__main__':
         all_data = all_data.union(data)
 
     all_data.printSchema()
-    all_data.show(50, truncate=False)
+    all_data.show(10, truncate=False)
     print("Combined record count", all_data.count())
     all_data.write.partitionBy('partition').mode('overwrite').parquet('output_dir')
