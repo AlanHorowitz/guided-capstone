@@ -1,26 +1,31 @@
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, count, desc, countDistinct
+from pyspark.sql import SparkSession, Window
+from datetime import date
 import pyspark.sql.functions as f
 
 
 def apply_latest(df):
-    return df
+
+    key_partition = Window.partitionBy("trade_dt", "symbol", "exchange", "event_tm", "event_seq_nb")
+    max_column = "arrival_tm"
+
+    return df.withColumn('tmp', f.max(max_column).over(key_partition)) \
+        .filter(f.col('tmp') == f.col(max_column)) \
+        .drop(f.col('tmp'))
 
 
 spark = SparkSession.builder.master('local').appName('app').getOrCreate()
-trade_common = spark.read.parquet("output_dir/partition=T")
 
-trade = trade_common.select("trade_dt", "symbol", "exchange", "event_tm", "event_seq_nb", "arrival_tm", "trade_pr")
+trade_common_df = spark.read.parquet("output_dir/partition=T")
+trade_df = trade_common_df.select("trade_dt", "symbol", "exchange", "event_tm", "event_seq_nb",
+                                  "arrival_tm", "trade_pr")
+quote_common_df = spark.read.parquet("output_dir/partition=Q")
+quote_df = trade_common_df.select("trade_dt", "symbol", "exchange", "event_tm", "event_seq_nb",
+                                  "arrival_tm", "bid_pr", "bid_size", "ask_pr", "ask_size")
 
-trade.createOrReplaceTempView('trade_v')
-r = spark.sql("select trade_dt from trade_v")
-r.show(5)
-trade_corrected = apply_latest(trade)
+dataframes = {'trade': trade_df,
+              'quote': quote_df}
 
-trade_common.show(5, False)
-print(trade_common.count())
-trade_common.printSchema()
-
-gr = trade_common.groupBy(col('trade_dt'), col('symbol'), col('exchange'), col('event_tm'))
-
-gr.agg(f.max('arrival_tm').alias('arrival_tm'), f.avg("ask_pr")).show(5)
+for df_name in dataframes:
+    cloud_storage_path = f'wasbs://test@guidedcapstonesa.blob.core.windows.net'
+    apply_latest(dataframes[df_name]) \
+        .write.mode('overwrite').parquet(f"{cloud_storage_path}/{df_name}/{df_name}_dt={date.today()}")
