@@ -4,7 +4,7 @@ import pyspark.sql.functions as f
 
 
 def apply_latest(df):
-
+    """ Return Quote or Trade dataframe filtering for most recent arrival per key. """
     key_partition = Window.partitionBy("trade_dt", "symbol", "exchange", "event_tm", "event_seq_nb")
     max_column = "arrival_tm"
 
@@ -14,7 +14,9 @@ def apply_latest(df):
 
 
 if __name__ == "__main__":
+    """ Recreate Quote and Trade dataframes, filter out-of-date records, and write to cloud storage."""
     spark = SparkSession.builder.master('local').appName('app').getOrCreate()
+    spark.conf.set("spark.sql.shuffle.partitions", 5)  # avoid unneeded shuffling
 
     trade_common_df = spark.read.parquet("output_dir/partition=T")
     trade_df = trade_common_df.select("trade_dt", "symbol", "exchange", "event_tm", "event_seq_nb",
@@ -27,6 +29,7 @@ if __name__ == "__main__":
                   'quote': quote_df}
 
     for df_name in dataframes:
-        cloud_storage_path = f'wasbs://test@guidedcapstonesa.blob.core.windows.net'
+        cloud_storage_path = "wasbs://test@guidedcapstonesa.blob.core.windows.net"
         apply_latest(dataframes[df_name]) \
-            .write.mode('overwrite').parquet(f"{cloud_storage_path}/{df_name}/{df_name}_dt={date.today()}")
+            .write.mode('overwrite') \
+            .parquet(f"{cloud_storage_path}/{df_name}/{df_name}_dt={date.today()}")

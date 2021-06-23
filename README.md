@@ -35,6 +35,27 @@ python main.py
 
 ### Contents of parquet output directory
 
-![outdir](./images/VirtualBox_pySpark_16_06_2021_10_25_35b.png)
+![output](./images/VirtualBox_pySpark_16_06_2021_10_25_35b.png)
+
+## Step Three: End-of-Day (EOD) Data Load
+
+### Summary:
+
+Recreate Quote and Trade dataframes, filter out-of-date records, and write to cloud storage.
+
+### Usage instructions (following step 2):
+
+```
+python step3.py
+```
+### Command output
+
+![console](./images/VirtualBox_pySpark_23_06_2021_11_55_05b.png)
+
+<br>
+
+### Contents of parquet output directory
+
+![azure](./images/VirtualBox_pySpark_23_06_2021_11_55_58.png)
 
 
