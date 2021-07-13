@@ -7,10 +7,8 @@ import os
 spark = SparkSession.builder.master('local').appName('guided-capstone').getOrCreate()
 spark.conf.set("spark.sql.shuffle.partitions", 4)  # avoid unneeded shuffling
 
-INPUT_DIRECTORY = "output_dir"
-file_input = 'file://' + os.getcwd() + '/' + INPUT_DIRECTORY
-
-trade_common_df = spark.read.parquet(file_input)
+cloud_output_path = "wasbs://output@guidedcapstonesa.blob.core.windows.net/"
+trade_common_df = spark.read.parquet(cloud_output_path + 'stage')
 
 # create trades table
 trade_common_df.where(trade_common_df.partition == 'T') \
@@ -99,4 +97,4 @@ spark.sql(
        rec_type = 'Q'
     ORDER BY symbol, exchange, event_tm;
     """
-).write.partitionBy('trade_dt').mode('overwrite').parquet('test_output_dir')
+).write.partitionBy('trade_dt').mode('overwrite').parquet(cloud_output_path + 'analytics')

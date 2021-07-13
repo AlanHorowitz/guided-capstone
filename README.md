@@ -53,18 +53,16 @@ Use Apache Spark RDD and dataframe APIs to read trade and quote data from csv an
 
 ```
 pipenv shell
-python main.py
+python step2.py
 ```
 
-### Command output
+### Results persisted as parquet in output/staging
 
-![console](./images/VirtualBox_pySpark_16_06_2021_10_20_45.png)
+![output](./images/VirtualBox_pySpark_12_07_2021_21_17_10.png)
 
 <br>
 
-### Contents of parquet output directory
-
-![output](./images/VirtualBox_pySpark_16_06_2021_10_25_35b.png)
+![output](./images/VirtualBox_pySpark_12_07_2021_21_17_21.png)
 
 ## Step Three: End-of-Day (EOD) Data Load
 
@@ -75,16 +73,43 @@ Recreate Quote and Trade dataframes, filter out-of-date records, and write to cl
 ### Usage instructions (following step 2):
 
 ```
+pipenv shell
 python step3.py
 ```
-### Command output
 
-![console](./images/VirtualBox_pySpark_23_06_2021_11_55_05b.png)
+### Results persisted as parquet in output/latest
+
+![output](./images/VirtualBox_pySpark_12_07_2021_21_17_38.png)
 
 <br>
 
-### Contents of parquet output directory
+![output](./images/VirtualBox_pySpark_12_07_2021_21_17_50.png)
 
-![azure](./images/VirtualBox_pySpark_23_06_2021_11_55_58.png)
 
+## Step Four: Analytical ETL
+
+### Summary:
+
+Derive three metrics for each quote.
+
+Latest trade price before the quote.
+Latest 30-minute moving average trade price, before the quote.
+The bid/ask price movement from previous day’s closing price.
+
+Metrics are calculated per symbol per exchange
+
+### Usage instructions (following step 3):
+
+```
+pipenv shell
+python step4.py
+```
+
+### Results persisted as parquet in output/analytics
+
+![output](./images/VirtualBox_pySpark_12_07_2021_21_18_18.png)
+
+<br>
+
+![output](./images/VirtualBox_pySpark_12_07_2021_21_18_30.png)
 

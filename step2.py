@@ -42,14 +42,19 @@ COMMON_SCHEMA = StructType([StructField("trade_dt", T.DateType(), False),
                             StructField("line", T.StringType(), True)]
                            )
 
-INPUT_DIRECTORY = 'step2-input'
+input_files = [
+    'part-00000-5e4ced0a-66e2-442a-b020-347d0df4df8f-c000.csv',
+    'part-00000-092ec1db-39ab-4079-9580-f7c7b516a283-c000.json',
+    'part-00000-214fff0a-f408-466c-bb15-095cd8b648dc-c000.csv',
+    'part-00000-c6c48831-3d45-4887-ba5f-82060885fc6c-c000.json'
+]
 
 
-def get_local_files() -> str:
+def get_input_files() -> str:
     """Yield a URL for each file in the input directory"""
-    for entry in os.listdir(INPUT_DIRECTORY):
-        if os.path.isfile(os.path.join(INPUT_DIRECTORY, entry)):
-            yield 'file://' + os.getcwd() + '/' + INPUT_DIRECTORY + '/' + entry
+    cloud_input_path = "wasbs://data@guidedcapstonesa.blob.core.windows.net/"
+    for filename in input_files:
+        yield cloud_input_path + filename
 
 
 def map_column(col: str) -> str:
@@ -223,7 +228,7 @@ if __name__ == '__main__':
     sc = spark.sparkContext
     all_data = spark.createDataFrame([], COMMON_SCHEMA)  # empty dataframe to accumulate all files
 
-    for file_location in get_local_files():
+    for file_location in get_input_files():
         raw = sc.textFile(file_location)
         if file_location[file_location.rfind('.'):] == '.json':
             parser = parse_json
@@ -236,7 +241,5 @@ if __name__ == '__main__':
         data = spark.createDataFrame(parsed, schema=COMMON_SCHEMA)
         all_data = all_data.union(data)
 
-    all_data.printSchema()
-    all_data.show(10, truncate=False)
-    print("Combined record count", all_data.count())
-    all_data.write.partitionBy('partition').mode('overwrite').parquet('output_dir')
+    cloud_output_path = "wasbs://output@guidedcapstonesa.blob.core.windows.net/"
+    all_data.write.partitionBy('partition').mode('overwrite').parquet(cloud_output_path + 'stage')
