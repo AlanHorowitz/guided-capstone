@@ -54,24 +54,24 @@ class Ingestion:
     def __init__(self, config):
         parser = configparser.ConfigParser()
         parser.read(config)
-        self._input_data_url = parser.get('app_config', 'input_data_url')
-        self._output_data_url = parser.get('app_config', 'output_data_url')
-        self._spark = SparkSession.builder.master('local').appName('guided-capstone').getOrCreate()
+        self._input_data_url = parser.get('APP_CONFIG', 'InputDataUrl')
+        self._output_data_url = parser.get('APP_CONFIG', 'OutputDataUrl')
 
     def ingest(self):
         """
         Guided Capstone data ingestion.  Read json and csv input files, transform data into a common schema
         and persist in parquet format.
         """
-        sc = self._spark.spark.sparkContext
+        spark = SparkSession.builder.master('local').appName('guided-capstone').getOrCreate()
+        sc = spark.sparkContext
         all_data = spark.createDataFrame([], COMMON_SCHEMA)  # empty dataframe to accumulate all files
 
-        for file_location in get_input_files():
+        for file_location in self._get_input_files():
             raw = sc.textFile(file_location)
             if file_location[file_location.rfind('.'):] == '.json':
-                parser = parse_json
+                parser = Ingestion._parse_json
             elif file_location[file_location.rfind('.'):] == '.csv':
-                parser = parse_csv
+                parser = Ingestion._parse_csv
             else:
                 print("Warning: unsupported file type detected")
                 continue
@@ -79,23 +79,21 @@ class Ingestion:
             data = spark.createDataFrame(parsed, schema=COMMON_SCHEMA)
             all_data = all_data.union(data)
 
-        cloud_output_path = "wasbs://output@guidedcapstonesa.blob.core.windows.net/"
-        all_data.write.partitionBy('partition').mode('overwrite').parquet(cloud_output_path + 'stage')
+        all_data.write.partitionBy('partition').mode('overwrite').parquet(self._output_data_url)
 
-
-    def get_input_files() -> str:
+    def _get_input_files(self) -> str:
         """Yield a URL for each file in the input directory"""
-        cloud_input_path = "wasbs://data@guidedcapstonesa.blob.core.windows.net/"
+        cloud_input_path = self._input_data_url
         for filename in input_files:
             yield cloud_input_path + filename
 
-
-    def map_column(col: str) -> str:
+    @staticmethod
+    def _map_column(col: str) -> str:
         """Map column names used by quote and trade schemas to common schema names"""
         return col if col not in COLUMN_MAPPINGS else COLUMN_MAPPINGS[col]
 
-
-    def convert_value_to_common_type(value: Union[str, int, float], target_type: str) -> Union[str, int, Decimal, date, datetime]:
+    @staticmethod
+    def _convert_value_to_common_type(value: Union[str, int, float], target_type: str) -> Union[str, int, Decimal, date, datetime]:
         """
         Convert a value to its required type. From csv, str is expected.  From json: str, int and float.
 
@@ -128,8 +126,8 @@ class Ingestion:
 
         return converted_value
 
-
-    def common_event(record_dict: Dict[str, Union[str, int, float]], schema: StructType, partition: str) -> List[Union[str, int, Decimal, date, datetime]]:
+    @staticmethod
+    def _common_event(record_dict: Dict[str, Union[str, int, float]], schema: StructType, partition: str) -> List[Union[str, int, Decimal, date, datetime]]:
         """
         Create a format-validated record matching the supplied schema.
 
@@ -156,7 +154,7 @@ class Ingestion:
                 if field_name == 'partition':
                     value = partition
                 elif field_name in record_dict:
-                    value = convert_value_to_common_type(record_dict[field_name], field_type)
+                    value = Ingestion._convert_value_to_common_type(record_dict[field_name], field_type)
                 elif field_nullable:
                     value = None
                 else:
@@ -168,8 +166,8 @@ class Ingestion:
         except Exception:
             raise ValueError(f'Value conversion error from record {record_dict}')
 
-
-    def error_event(schema: StructType, partition: str, line: str) -> List[Union[str, int, Decimal, date, datetime]]:
+    @staticmethod
+    def _error_event(schema: StructType, partition: str, line: str) -> List[Union[str, int, Decimal, date, datetime]]:
         """
         Create a format-validated error record matching the supplied schema.
 
@@ -205,8 +203,8 @@ class Ingestion:
 
         return error_event_row
 
-
-    def parse_csv(line: str) -> List[Union[str, int, Decimal, date, datetime]]:
+    @staticmethod
+    def _parse_csv(line: str) -> List[Union[str, int, Decimal, date, datetime]]:
         """
         Parse a line of text in csv format, setting partition column as record type.
 
@@ -219,19 +217,19 @@ class Ingestion:
             record_type = record[record_type_pos]
 
             if record_type == 'Q' and len(record) == len(QUOTE_COLUMNS):
-                record_dict = {map_column(c): record[i] for i, c in enumerate(QUOTE_COLUMNS)}
-                return common_event(record_dict, COMMON_SCHEMA, 'Q')
+                record_dict = {Ingestion._map_column(c): record[i] for i, c in enumerate(QUOTE_COLUMNS)}
+                return Ingestion._common_event(record_dict, COMMON_SCHEMA, 'Q')
             elif record_type == 'T' and len(record) == len(TRADE_COLUMNS):
-                record_dict = {map_column(c): record[i] for i, c in enumerate(TRADE_COLUMNS)}
-                return common_event(record_dict, COMMON_SCHEMA, 'T')
+                record_dict = {Ingestion._map_column(c): record[i] for i, c in enumerate(TRADE_COLUMNS)}
+                return Ingestion._common_event(record_dict, COMMON_SCHEMA, 'T')
             else:
                 raise ValueError(f'Unknown record type or incorrect number of fields from record {record}')
 
         except ValueError:
-            return error_event(COMMON_SCHEMA, 'B', line)
+            return Ingestion._error_event(COMMON_SCHEMA, 'B', line)
 
-
-    def parse_json(line: str) -> List[Union[str, int, Decimal, date, datetime]]:
+    @staticmethod
+    def _parse_json(line: str) -> List[Union[str, int, Decimal, date, datetime]]:
         """
         Parse a line of text in json format, setting partition column as record type.
 
@@ -243,13 +241,13 @@ class Ingestion:
             record_type = record['event_type']
 
             if record_type == 'Q' or record_type == 'T':
-                translated_record = {map_column(k): v for k, v in record.items()}
-                return common_event(translated_record, COMMON_SCHEMA, record_type)
+                translated_record = {Ingestion._map_column(k): v for k, v in record.items()}
+                return Ingestion._common_event(translated_record, COMMON_SCHEMA, record_type)
             else:
                 raise ValueError(f'Unknown record type from record {record}')
 
         except ValueError:
-            return error_event(COMMON_SCHEMA, 'B', line)
+            return Ingestion._error_event(COMMON_SCHEMA, 'B', line)
 
 
 
