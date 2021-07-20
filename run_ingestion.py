@@ -6,10 +6,9 @@ from tracker import Tracker
 if __name__ == '__main__':
     if len(sys.argv) != 2:
         print("Error: Use run_ingestion.py config_file")
-    config = sys.argv[1]
-    parser = configparser.ConfigParser()
-    parser.read(config)
-    trade_date = parser.get('PRODUCTION', 'ProcessingDate')
+    config = configparser.ConfigParser()
+    config.read(sys.argv[1])
+    trade_date = config.get('PRODUCTION', 'ProcessingDate')
     trade_ingestion_tracker = Tracker('ingestion_etl', config)
     try:
         Ingestion(config).ingest()
