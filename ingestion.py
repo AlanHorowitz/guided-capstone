@@ -13,10 +13,10 @@ import os
 from typing import List, Dict, Union
 
 import dateutil.parser
+from datetime import date, timedelta
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StructType, StructField
 import pyspark.sql.types as T
-import configparser
 
 QUOTE_COLUMNS = ('trade_dt', 'file_tm', 'event_type', 'symbol', 'event_tm', 'event_seq_nb',
                  'exchange', 'bid_pr', 'bid_size', 'ask_pr', 'ask_size')
@@ -42,20 +42,18 @@ COMMON_SCHEMA = StructType([StructField("trade_dt", T.DateType(), False),
                             StructField("line", T.StringType(), True)]
                            )
 
-input_files = [
-    'part-00000-5e4ced0a-66e2-442a-b020-347d0df4df8f-c000.csv',
-    'part-00000-092ec1db-39ab-4079-9580-f7c7b516a283-c000.json',
-    'part-00000-214fff0a-f408-466c-bb15-095cd8b648dc-c000.csv',
-    'part-00000-c6c48831-3d45-4887-ba5f-82060885fc6c-c000.json'
-]
-
 
 class Ingestion:
+
     def __init__(self, config):
-        parser = configparser.ConfigParser()
-        parser.read(config)
-        self._input_data_url = parser.get('APP_CONFIG', 'InputDataUrl')
-        self._output_data_url = parser.get('APP_CONFIG', 'OutputDataUrl')
+        self._input_data_url = config.get('APP_CONFIG', 'InputDataUrl')
+        self._output_data_url = config.get('APP_CONFIG', 'OutputDataUrl')
+        try:
+            processing_date = config.get('PRODUCTION', 'ProcessingDate')
+            self._processing_date = date.fromisoformat(processing_date)
+            self._prior_date = self._processing_date - timedelta(days=1)
+        except ValueError:
+            raise ValueError(f"Invalid ProcessingDate in config.ini {processing_date}")
 
     def ingest(self):
         """
@@ -66,26 +64,20 @@ class Ingestion:
         sc = spark.sparkContext
         all_data = spark.createDataFrame([], COMMON_SCHEMA)  # empty dataframe to accumulate all files
 
-        for file_location in self._get_input_files():
-            raw = sc.textFile(file_location)
-            if file_location[file_location.rfind('.'):] == '.json':
-                parser = Ingestion._parse_json
-            elif file_location[file_location.rfind('.'):] == '.csv':
-                parser = Ingestion._parse_csv
-            else:
-                print("Warning: unsupported file type detected")
-                continue
-            parsed = raw.map(parser)
-            data = spark.createDataFrame(parsed, schema=COMMON_SCHEMA)
-            all_data = all_data.union(data)
+        #  Collect from processing date and prior date (ignore weekends and holidays)
+        for process_date in [self._processing_date, self._prior_date]:
+            for file_type in ['json', 'csv']:
+                raw = sc.textFile(self._get_input_file(process_date, file_type))
+                parser = Ingestion._parse_json if file_type == 'json' else Ingestion._parse_csv
+                parsed = raw.map(parser)
+                data = spark.createDataFrame(parsed, schema=COMMON_SCHEMA)
+                all_data = all_data.union(data)
 
         all_data.write.partitionBy('partition').mode('overwrite').parquet(self._output_data_url)
 
-    def _get_input_files(self) -> str:
-        """Yield a URL for each file in the input directory"""
-        cloud_input_path = self._input_data_url
-        for filename in input_files:
-            yield cloud_input_path + filename
+    def _get_input_file(self, process_date: date, file_type: str) -> str:
+        """Return a URL that matches file in the input directory for date and format"""
+        return self._input_data_url + file_type + '/' + process_date.isoformat() + '/*/*'
 
     @staticmethod
     def _map_column(col: str) -> str:
@@ -93,7 +85,8 @@ class Ingestion:
         return col if col not in COLUMN_MAPPINGS else COLUMN_MAPPINGS[col]
 
     @staticmethod
-    def _convert_value_to_common_type(value: Union[str, int, float], target_type: str) -> Union[str, int, Decimal, date, datetime]:
+    def _convert_value_to_common_type(value: Union[str, int, float],
+                                      target_type: str) -> Union[str, int, Decimal, date, datetime]:
         """
         Convert a value to its required type. From csv, str is expected.  From json: str, int and float.
 
