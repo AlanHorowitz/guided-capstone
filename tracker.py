@@ -30,7 +30,7 @@ class Tracker:
             print(f"Error: Connection unavailable for status record: {job_id} {update_time} {status}")
 
     def _assign_job_id(self) -> str:
-        return self._name + self._trade_date
+        return self._name + '_' + self._trade_date
 
     def get_job_status(self, job_id: str) -> Tuple:
         if self._connection is not None:

@@ -97,7 +97,7 @@ class AnalyticalReport:
                a.exchange, 
                a.event_tm, 
                a.prior_trade_pr, 
-               cast(a.prior_mov_avg_trade_pr as decimal(2)),
+               cast(a.prior_mov_avg_trade_pr as decimal(10,2)),
                b.prior_close_trade_pr 
             FROM quotes_trades_extended a
             JOIN prior_day_close b 

@@ -30,8 +30,8 @@ class EODReport:
         quote_columns = ["trade_dt", "symbol", "rec_type", "exchange", "event_tm", "event_seq_nb",
                          "arrival_tm", "bid_pr", "bid_size", "ask_pr", "ask_size"]
 
-        trade_df = common_df.select(trade_columns).where(col('rec_type') == 'T')
-        quote_df = common_df.select(quote_columns).where(col('rec_type') == 'Q')
+        trade_df = common_df.select(trade_columns).where(col('rec_type') == 'T').drop(col('rec_type'))
+        quote_df = common_df.select(quote_columns).where(col('rec_type') == 'Q').drop(col('rec_type'))
 
         EODReport.apply_latest(trade_df)\
             .write.mode('overwrite')\
