@@ -1,7 +1,7 @@
 import sys
 import configparser
-from reports import Reports
-from tracker import Tracker
+from equity_market_data_analysis.reports import Reports
+from equity_market_data_analysis.tracker import Tracker
 
 if __name__ == '__main__':
     if len(sys.argv) != 2:

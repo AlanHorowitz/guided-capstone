@@ -1,8 +1,8 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
 from datetime import date
-from eod_report import EODReport
-from analytical_report import AnalyticalReport
+from .eod_report import EODReport
+from equity_market_data_analysis.analytical_report import AnalyticalReport
 
 
 class Reports:
