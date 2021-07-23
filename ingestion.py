@@ -1,15 +1,7 @@
 #!/usr/bin/env python
-"""
-Guided Capstone Step 2
-
-Use Apache Spark RDD and dataframe APIs to read trade and quote data from csv and json sources, conform them
-to a common schema, and write the output to parquet.
-"""
-
 from datetime import date, datetime
 from decimal import Decimal
 import json
-import os
 from typing import List, Dict, Union
 
 import dateutil.parser
@@ -44,10 +36,14 @@ COMMON_SCHEMA = StructType([StructField("trade_dt", T.DateType(), False),
 
 
 class Ingestion:
-
+    """
+    Use Apache Spark RDD and dataframe APIs to read trade and quote data from csv and json sources, conform them
+    to a common schema, and write the output to parquet.
+    """
     def __init__(self, config):
-        self._input_data_url = config.get('APP_CONFIG', 'InputDataUrl')
-        self._output_data_url = config.get('APP_CONFIG', 'OutputDataUrl')
+        self._input_container = config.get('APP_CONFIG', 'InputContainer')
+        self._output_container = config.get('APP_CONFIG', 'OutputContainer')
+        self._staging_dir = config.get('APP_CONFIG', 'StagingDir')
         try:
             processing_date = config.get('PRODUCTION', 'ProcessingDate')
             self._processing_date = date.fromisoformat(processing_date)
@@ -73,11 +69,12 @@ class Ingestion:
                 data = spark.createDataFrame(parsed, schema=COMMON_SCHEMA)
                 all_data = all_data.union(data)
 
-        all_data.write.partitionBy('partition').mode('overwrite').parquet(self._output_data_url)
+        all_data.write.partitionBy('partition').mode('overwrite') \
+            .parquet(f"{self._output_container}/{self._staging_dir}")
 
     def _get_input_file(self, process_date: date, file_type: str) -> str:
         """Return a URL that matches file in the input directory for date and format"""
-        return self._input_data_url + file_type + '/' + process_date.isoformat() + '/*/*'
+        return f"{self._input_container}/{file_type}/{process_date.isoformat()}/*/*"
 
     @staticmethod
     def _map_column(col: str) -> str:
@@ -120,7 +117,8 @@ class Ingestion:
         return converted_value
 
     @staticmethod
-    def _common_event(record_dict: Dict[str, Union[str, int, float]], schema: StructType, partition: str) -> List[Union[str, int, Decimal, date, datetime]]:
+    def _common_event(record_dict: Dict[str, Union[str, int, float]],
+                      schema: StructType, partition: str) -> List[Union[str, int, Decimal, date, datetime]]:
         """
         Create a format-validated record matching the supplied schema.
 
@@ -241,7 +239,3 @@ class Ingestion:
 
         except ValueError:
             return Ingestion._error_event(COMMON_SCHEMA, 'B', line)
-
-
-
-

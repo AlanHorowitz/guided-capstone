@@ -35,8 +35,8 @@ class EODReport:
 
         EODReport.apply_latest(trade_df)\
             .write.mode('overwrite')\
-            .parquet(f"{self._output_data_url}/{self._eod_report_dir}/trade_dt={self._processing_date}")
+            .parquet(f"{self._output_container}/{self._eod_report_dir}/trade_dt={self._processing_date}")
 
         EODReport.apply_latest(quote_df)\
             .write.mode('overwrite') \
-            .parquet(f"{self._output_data_url}/{self._eod_report_dir}/quote_dt={self._processing_date}")
+            .parquet(f"{self._output_container}/{self._eod_report_dir}/quote_dt={self._processing_date}")

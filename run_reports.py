@@ -8,10 +8,10 @@ if __name__ == '__main__':
         print("Error: Use run_reports.py config_file")
     config = configparser.ConfigParser()
     config.read(sys.argv[1])
-    trade_ingestion_tracker = Tracker('reports_etl', config)
+    reports_tracker = Tracker('reports', config)
     try:
         Reports(config).run()
-        trade_ingestion_tracker.update_job_status("success")
+        reports_tracker.update_job_status("success")
     except Exception as e:
         print(e)
-        trade_ingestion_tracker.update_job_status("failed")
+        reports_tracker.update_job_status("failed")

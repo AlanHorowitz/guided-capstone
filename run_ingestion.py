@@ -8,12 +8,12 @@ if __name__ == '__main__':
         print("Error: Use run_ingestion.py config_file")
     config = configparser.ConfigParser()
     config.read(sys.argv[1])
-    trade_ingestion_tracker = Tracker('ingestion_etl', config)
+    ingestion_tracker = Tracker('ingestion', config)
     try:
         Ingestion(config).ingest()
-        trade_ingestion_tracker.update_job_status("success")
+        ingestion_tracker.update_job_status("success")
     except Exception as e:
         print(e)
-        trade_ingestion_tracker.update_job_status("failed")
+        ingestion_tracker.update_job_status("failed")
 
 

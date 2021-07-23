@@ -25,7 +25,7 @@ class Reports:
         trade_common_df.cache()
 
         EODReport(self._config).run(trade_common_df.where(col('trade_dt') == self._processing_date))
-        AnalyticalReport(self._config).run(trade_common_df)
+        AnalyticalReport(self._config).run(trade_common_df, spark)
 
 
 
