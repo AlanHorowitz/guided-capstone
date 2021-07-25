@@ -1,7 +1,7 @@
 import sys
 import configparser
-from equity_market_data_analysis.ingestion import Ingestion
-from equity_market_data_analysis.tracker import Tracker
+from equity_market_data_analysis import Ingestion
+from equity_market_data_analysis import Tracker
 
 if len(sys.argv) == 2:
     config = configparser.ConfigParser()
