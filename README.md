@@ -68,26 +68,31 @@ export HADOOP_CONF_DIR=${SPARK_HOME}/hadoop
 ```
 CREATE TABLE job_tracker (job_id VARCHAR(80), update_time TIMESTAMP, status VARCHAR(80));
 ```
+![config_local.ini](./images/VirtualBox_pySpark_25_07_2021_13_40_35.png)
+<br>
+config_local.ini
 
 ### Build and install equity market analysis module
 
-- python 
-## Step One -  Design and Setup
+- python -m build
+- pipenv install .
 
-- Dataflow diagram: dataflow.png
+## Ingestion
 
-## Step Two -  Data Ingestion
+### Summary
 
-### Summary:  
+Ingest data for 2020-08-06. Use Apache Spark RDD and dataframe APIs to read trade and quote data from csv and json sources, conform them to a common schema, and write the output to parquet.
+<br>
 
-Use Apache Spark RDD and dataframe APIs to read trade and quote data from csv and json sources, conform them to a common schema, and write the output to parquet.
+![run_ingestion.py](./images/VirtualBox_pySpark_25_07_2021_13_41_09.png)
+<br>
+run_ingestion.py
 
+### Usage:
 
-### Usage instructions:
-
-```
+``` 
 pipenv shell
-python step2.py
+spark-submit run_ingestion.py config-local.ini
 ```
 
 ### Results persisted as parquet in output/staging
@@ -98,52 +103,15 @@ python step2.py
 
 ![output](./images/VirtualBox_pySpark_12_07_2021_21_17_21.png)
 
-## Step Three: End-of-Day (EOD) Data Load
 
-### Summary:
+## Reports
 
-Recreate Quote and Trade dataframes, filter out-of-date records, and write to cloud storage.
+### Summary
 
-### Usage instructions (following step 2):
+- EOD report: filter out-of-date records, and write to cloud storage.
+- Analytical report: Derive three metrics for each quote:
+  - Latest trade price before the quote.
+  - Latest 30-minute moving average trade price, before the quote.
+  - The bid/ask price movement from previous day’s closing price.
 
-```
-pipenv shell
-python step3.py
-```
-
-### Results persisted as parquet in output/latest
-
-![output](./images/VirtualBox_pySpark_12_07_2021_21_17_38.png)
-
-<br>
-
-![output](./images/VirtualBox_pySpark_12_07_2021_21_17_50.png)
-
-
-## Step Four: Analytical ETL
-
-### Summary:
-
-Derive three metrics for each quote.
-
-Latest trade price before the quote.
-Latest 30-minute moving average trade price, before the quote.
-The bid/ask price movement from previous day’s closing price.
-
-Metrics are calculated per symbol per exchange
-
-### Usage instructions (following step 3):
-
-```
-pipenv shell
-python step4.py
-```
-
-### Results persisted as parquet in output/analytics
-
-![output](./images/VirtualBox_pySpark_12_07_2021_21_18_18.png)
-
-<br>
-
-![output](./images/VirtualBox_pySpark_12_07_2021_21_18_30.png)
 
