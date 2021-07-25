@@ -1,34 +1,13 @@
 # Guided Capstone - Equity Market Data Analysis
 
-### Summary: equity_market_data_analysis module
+### Environment
 
-### equity_market_data_analysis implements a pipeline that ingests and analyzes market data from two exchanges.  The module exposes three classes:
-
-- Ingestion - Reads, normalizes and stages a day of market data
-- Reports - Runs EOD summary and analytical reports from a day of staged data
-- Tracker - Records success or failure of pipeline steps to database
-
-### This pipeline was deployed to a local Ubuntu pySpark and an Azure Databricks environment.
-
-### Data flow
-
-![dataflow](./images/dataflow.png)
-
-### Local Environment
-
-- Ubuntu 20.04 
 - java 11
-- apt install postgresql  
 - pipenv
 - pipenv install pyspark==3.1.2
 - pipenv install pytest==6.2.4
-- pipenv install build
 
-### Storage
-
-- Azure Blob storage
-
-### Modifications to local pySpark for wasb
+### Additional changes to pySpark for wasb
 
 From SPARK_HOME:
 /home/alan/.local/share/virtualenvs/guided-capstone-WVET3RpX/lib/python3.8/site-packages/pyspark
@@ -58,20 +37,7 @@ export HADOOP_CONF_DIR=${SPARK_HOME}/hadoop
   * jetty-util-6.0.1.jar
   * azure-storage-8.6.6.jar
   * hadoop-azure-3.1.2.jar
-  
-### Initialization
 
-- create azure blob storage containers: data, output
-- Use Azcopy to copy inputs to data container
-- Create job tracking table in postgres
-
-```
-CREATE TABLE job_tracker (job_id VARCHAR(80), update_time TIMESTAMP, status VARCHAR(80));
-```
-
-### Build and install equity market analysis module
-
-- python 
 ## Step One -  Design and Setup
 
 - Dataflow diagram: dataflow.png
