@@ -14,7 +14,7 @@
 
 ![dataflow](./images/dataflow.png)
 
-### Local Environment
+## Local Environment
 
 - Ubuntu 20.04 
 - java 11
@@ -62,8 +62,8 @@ export HADOOP_CONF_DIR=${SPARK_HOME}/hadoop
 ### Initialization
 
 - create azure blob storage containers: data, output
-- Use Azcopy to copy inputs to data container
-- Create job tracking table in postgres
+- use azcopy to copy inputs to data container
+- create job tracking table in postgres
 
 ```
 CREATE TABLE job_tracker (job_id VARCHAR(80), update_time TIMESTAMP, status VARCHAR(80));
@@ -113,8 +113,18 @@ spark-submit run_ingestion.py config-local.ini
   - Latest trade price before the quote.
   - Latest 30-minute moving average trade price, before the quote.
   - The bid/ask price movement from previous day’s closing price.
+<br>
+![run_reports.py](./images/VirtualBox_pySpark_25_07_2021_19_53_03.png)
+<br>
+run_reports.py
 
-### Equity Market Data Analysis Reports (notebooks/report_output.ipynb)
+### Usage:
+
+``` 
+pipenv shell
+spark-submit run_reports.py config-local.ini
+```
+### Results - Equity Market Data Analysis Reports (notebooks/report_output.ipynb)
 
 
 ```python
@@ -299,10 +309,49 @@ tracker.get_job_status('reports_' + processing_date)
      datetime.datetime(2021, 7, 25, 14, 40, 54, 824857),
      'success')
 
+## Azure Databricks Environment
 
+- Azure Databricks Service
+- Azure Database for PostgreSQL server
+ 
+### Storage
 
+- Azure Blob storage
 
-```python
+### Initialization
 
+- create azure blob storage containers: data, output
+- create azure blob storage container: databricks-python
+- use azcopy to copy inputs to data container
+- use azcopy to copy run_ingestion.py, run_reports.py, config_databricks.ini to databricks-python container
+- create job tracking table in postgres
+- create databricks cluster
+- modify spark config parameters on cluster for wasb r/w access
+  - spark.hadoop.fs.azure.sas.output.guidedcapstonesa2.blob.core.windows.net 
+  - spark.hadoop.fs.azure.account.key.guidedcapstonesa2.blob.core.windows.net 
+  - spark.hadoop.fs.azure.sas.data.guidedcapstonesa2.blob.core.windows.net
+- install dist/equity_market_data_analysis-1.0.0-py3-none-any.whl to cluster
+- mount the databricks-python container
 ```
+dbutils.fs.mount(
+source = "wasbs://databricks-python@guidedcapstonesa2.blob.core.windows.net",
+mount_point = "/mnt/python",
+extra_configs = {"fs.azure.account.key.guidedcapstonesa2.blob.core.windows.net" :
+  "<ACCOUNT-KEY>"
+})
+```
+### Create Jobs for pipeline scripts and run them
 
+![run_ingestion.py](./images/VirtualBox_pySpark_25_07_2021_21_06_10.png)
+<br>
+
+
+![run_reports.py](./images/VirtualBox_pySpark_25_07_2021_21_06_23.png)
+<br>
+
+![run_reports.py](./images/VirtualBox_pySpark_25_07_2021_21_06_42.png)
+<br>
+
+### Results - Equity Market Data Analysis Reports 
+
+### Same result as local case (see notebook/output_report_databricks.ipynb) 
