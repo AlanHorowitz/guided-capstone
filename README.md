@@ -113,7 +113,7 @@ spark-submit run_ingestion.py config-local.ini
   - Latest trade price before the quote.
   - Latest 30-minute moving average trade price, before the quote.
   - The bid/ask price movement from previous day’s closing price.
-<br>
+
 ![run_reports.py](./images/VirtualBox_pySpark_25_07_2021_19_53_03.png)
 <br>
 run_reports.py
