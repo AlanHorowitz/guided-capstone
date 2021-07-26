@@ -92,7 +92,7 @@ run_ingestion.py
 
 ``` 
 pipenv shell
-spark-submit run_ingestion.py config-local.ini
+spark-submit run_ingestion.py config_local.ini
 ```
 
 ### Results persisted as parquet in output/staging
@@ -122,7 +122,7 @@ run_reports.py
 
 ``` 
 pipenv shell
-spark-submit run_reports.py config-local.ini
+spark-submit run_reports.py config_local.ini
 ```
 ### Results - Equity Market Data Analysis Reports (notebooks/report_output.ipynb)
 
@@ -354,4 +354,4 @@ extra_configs = {"fs.azure.account.key.guidedcapstonesa2.blob.core.windows.net" 
 
 ### Results - Equity Market Data Analysis Reports 
 
-### Same result as local case (see notebook/output_report_databricks.ipynb) 
+### Same result as local case (see notebooks/output_report_databricks.ipynb) 
